@@ -37,26 +37,44 @@ class BoookAnalyzer():
                 (action, order_id, record) = self.parse_input(line)
                 if action == ("A", "B"):
                     self.bids[order_id] = record
-                    self.income = self.process_bids(
-                        deepcopy(self.bids), self.target_size, record["time"])
+                    self.income = self.process_record(
+                        target_method=self.find_highest_bid,
+                        validation_method=self.is_book_size_ok,
+                        book=self.bids,
+                        requested_size=self.target_size,
+                        time=record["time"],
+                        side="S")
                 if action == ("A", "S"):
                     self.asks[order_id] = record
-                    self.expense = self.process_asks(
-                        deepcopy(self.asks), self.target_size, record["time"])
+                    self.expense = self.process_record(
+                        target_method=self.find_lowest_ask,
+                        validation_method=self.is_book_size_ok,
+                        book=self.asks,
+                        requested_size=self.target_size,
+                        time=record["time"],
+                        side="B")
                 elif action == "R":
                     book = self.reduce_record(record["size"], order_id)
                     if book == "bids" and self.income and self.income != "NA":
-                        income = self.process_bids(deepcopy(self.bids),
-                                                   self.target_size,
-                                                   record["time"])
+                        income = self.process_record(
+                            target_method=self.find_highest_bid,
+                            validation_method=self.is_book_size_ok,
+                            book=self.bids,
+                            requested_size=self.target_size,
+                            time=record["time"],
+                            side="S")
                         if not income:
                             self.income = "NA"
                             stdout.write("%s S NA\n" % record["time"])
                     if book == "asks" and \
                             self.expense and self.expense != "NA":
-                        expense = self.process_asks(deepcopy(self.asks),
-                                                    self.target_size,
-                                                    record["time"])
+                        expense = self.process_record(
+                            target_method=self.find_lowest_ask,
+                            validation_method=self.is_book_size_ok,
+                            book=self.asks,
+                            requested_size=self.target_size,
+                            time=record["time"],
+                            side="B")
                         if not expense:
                             self.expense = "NA"
                             stdout.write("%s B NA\n" % record["time"])
@@ -102,57 +120,34 @@ class BoookAnalyzer():
                 return True
         return False
 
-    def process_bids(self, book, target_size, time):
-        """Process bid according to requested logic."""
-        income = 0
-        if self.is_book_size_ok(book, target_size):
-            target_size = eval(target_size)
+    @staticmethod
+    def process_record(target_method, validation_method,
+                       book, requested_size, time, side):
+        """Process record according to requested logic."""
+        book = deepcopy(book)
+        requested_size = copy(requested_size)
+        money = 0
+        if validation_method(book, requested_size):
+            requested_size = eval(requested_size)
             while True:
-                if target_size != 0:
-                    highest = self.find_highest_bid(book)
-                    if target_size >= eval(book[highest]["size"]):
-                        target_size -= eval(book[highest]["size"])
-                        income += eval(book[highest]["price"]) * \
-                            eval(book[highest]["size"])
-                        del book[highest]
+                if requested_size != 0:
+                    target = target_method(book)
+                    if requested_size >= eval(book[target]["size"]):
+                        requested_size -= eval(book[target]["size"])
+                        money += eval(book[target]["price"]) * \
+                            eval(book[target]["size"])
+                        del book[target]
                     else:
-                        remaining = eval(book[highest]["size"]) - target_size
-                        # Update record with new size
-                        book[highest]["size"] = str(remaining)
-                        income += eval(book[highest]["price"])*target_size
+                        remaining = eval(book[target]["size"]) - requested_size
+                        book[target]["size"] = str(remaining)
+                        money += eval(book[target]["price"])*requested_size
                         break
                 else:
                     break
-            if income > 0:
-                stdout.write("{time} S {income}\n".format(
-                    time=time, income=format(income, '.2f')))
-        return income
-
-    def process_asks(self, book, target_size, time):
-        """Process ask according to requested logic."""
-        expense = 0
-        if self.is_book_size_ok(book, target_size):
-            target_size = eval(target_size)
-            while True:
-                if target_size != 0:
-                    lowest = self.find_lowest_ask(book)
-                    if target_size >= eval(book[lowest]["size"]):
-                        target_size -= eval(book[lowest]["size"])
-                        expense += eval(book[lowest]["price"]) * \
-                            eval(book[lowest]["size"])
-                        del book[lowest]
-                    else:
-                        remaining = eval(book[lowest]["size"]) - target_size
-                        # Update record with new size
-                        book[lowest]["size"] = str(remaining)
-                        expense += eval(book[lowest]["price"])*target_size
-                        break
-                else:
-                    break
-            if expense > 0:
-                stdout.write("{time} B {expense}\n".format(
-                    time=time, expense=format(expense, '.2f')))
-        return expense
+            if money > 0:
+                stdout.write("{time} {side} {money}\n".format(
+                    time=time, side=side, money=format(money, '.2f')))
+        return money
 
     @staticmethod
     def is_int_or_float_greater_zero(obj):
