@@ -1,8 +1,12 @@
-from sys import stdin,stderr,stdout
-from pprint import pprint
-from sys import argv
+"""Book Analyzer Module."""
 
-class BoookAnalyzer(object):
+from sys import stdin, stderr, stdout
+from pprint import pprint
+from sys import argv, exit
+from copy import copy
+
+
+class BoookAnalyzer():
     """The Book Analyzer."""
 
     def __init__(self) -> None:
@@ -10,6 +14,8 @@ class BoookAnalyzer(object):
         super().__init__()
         self.bids = {}
         self.asks = {}
+        self.income = False
+        self.expense = False
         self.target_size = self.get_target_size()
 
     @staticmethod
@@ -30,16 +36,22 @@ class BoookAnalyzer(object):
                 (action, order_id, record) = self.parse_input(line)
                 if action == ("A", "B"):
                     self.bids[order_id] = record
-                    income = self.process_bids()
-                    if income:
-                        stdout.write("{time} S {income}".format(time=record["time"], income=income))
+                    self.income = self.process_bids(copy(self.bids), self.target_size, record["time"])
                 if action == ("A", "S"):
                     self.asks[order_id] = record
-                    expense = self.process_asks()
-                    if expense:
-                        stdout.write("{time} B {expense}".format(time=record["time"], expense=expense))
+                    self.expense = self.process_asks(copy(self.asks), self.target_size, record["time"])
                 elif action == "R":
                     self.reduce_record(record["size"], order_id)
+                    if self.income and self.income != "NA":
+                        income = self.process_bids(copy(self.bids), self.target_size, record["time"])
+                        if not income:
+                            self.income = "NA"
+                            stdout.write("%s B NA\n" % record["time"])
+                    if self.expense and self.expense != "NA":
+                        expense = self.process_asks(copy(self.asks), self.target_size, record["time"])
+                        if not expense:
+                            self.expense = "NA"
+                            stdout.write("%s S NA\n" % record["time"])
                 else:
                     stderr.write("INPUT ERROR: Action %s is not supported\n" % action)
             except TypeError:
@@ -58,91 +70,69 @@ class BoookAnalyzer(object):
             return book
         if order_id in self.bids.keys():
             self.bids = _reduce(self.bids, size, order_id)
-            # new_size = eval(self.bids[order_id]["size"]) - eval(size)
-            # if new_size > 0:
-            #     self.bids[order_id]["size"] = str(new_size)
-            # elif new_size == 0:
-            #     del self.bids[order_id]
-            # elif new_size < 0:
-            #     stderr.write("REDUCE ERROR: Can't reduce order {id} with size {cur_size} by {req_size} as resulting value would be below 0.\n".format(id=order_id, cur_size=self.bids[order_id]["size"], req_size=record["size"]))
         elif order_id in self.asks.keys():
             self.asks = _reduce(self.asks, size, order_id)
         else:
             stderr.write("REDUCE ERROR: ID %s is not found.\n" % order_id)
 
-    # def is_book_size_ok(self):
-    #     """Check if bids and asks meet target-size."""
-    #     def _check_size(book, target_size):
-    #         size = 0
-    #         for order_id in book:
-    #             size += eval(book[order_id]["size"])
-    #             if size >= target_size:
-    #                 return True
-    #         return False
-    #     bids_ok = _check_size(self.bids, self.target_size)
-    #     asks_ok = _check_size(self.asks, self.target_size)
-    #     if bids_ok or asks_ok:
-    #         return True
-    #     else:
-    #         return False
-
     @staticmethod
     def is_book_size_ok(book, target_size):
         """Check if total size of the bids/asks meet target-size."""
         size = 0
+        target_size = eval(target_size)
         for order_id in book:
             size += eval(book[order_id]["size"])
             if size >= target_size:
                 return True
         return False
 
-    def process_bids(self):
+    def process_bids(self, book, target_size, time):
         """Process bid according to requested logic."""
-        if self.is_book_size_ok(self.bids, self.target_size):
-            target_size = eval(self.target_size)
-            income = 0
+        income = 0
+        if self.is_book_size_ok(book, target_size):
+            target_size = eval(target_size)
             while True:
                 if target_size != 0:
-                    highest = self.find_highest_bid(self.bids)
-                    if target_size >= eval(self.book[highest]["size"]):
-                        target_size -= eval(self.book[highest]["size"])
-                        income += eval(self.book[highest]["price"])*eval(self.book[highest]["size"])
-                        del self.book[highest]
+                    highest = self.find_highest_bid(book)
+                    if target_size >= eval(book[highest]["size"]):
+                        target_size -= eval(book[highest]["size"])
+                        income += eval(book[highest]["price"])*eval(book[highest]["size"])
+                        del book[highest]
                     else:
-                        remaining = eval(self.book[highest]["size"]) - target_size
+                        remaining = eval(book[highest]["size"]) - target_size
                         # Update record with new size
-                        self.book[highest]["size"] = str(remaining)
-                        income += eval(self.book[highest]["price"])*target_size
+                        book[highest]["size"] = str(remaining)
+                        income += eval(book[highest]["price"])*target_size
                         break
                 else:
                     break
-            return income
-        else:
-            return False
+            if income > 0:
+                stdout.write("{time} S {income}\n".format(time=time, income=income))
+        return income
 
-    def process_asks(self):
+    def process_asks(self, book, target_size, time):
         """Process ask according to requested logic."""
-        if self.is_book_size_ok(self.asks, self.target_size):
-            target_size = eval(self.target_size)
-            expense = 0
+        expense = 0
+        if self.is_book_size_ok(book, target_size):
+            target_size = eval(target_size)
             while True:
                 if target_size != 0:
-                    lowest = self.find_lowest_ask(self.asks)
-                    if target_size >= eval(self.book[lowest]["size"]):
-                        target_size -= eval(self.book[lowest]["size"])
-                        expense += eval(self.book[lowest]["price"])*eval(self.book[lowest]["size"])
-                        del self.book[lowest]
+                    lowest = self.find_lowest_ask(book)
+                    if target_size >= eval(book[lowest]["size"]):
+                        target_size -= eval(book[lowest]["size"])
+                        expense += eval(book[lowest]["price"])*eval(book[lowest]["size"])
+                        del book[lowest]
                     else:
-                        remaining = eval(self.book[lowest]["size"]) - target_size
+                        remaining = eval(book[lowest]["size"]) - target_size
                         # Update record with new size
-                        self.book[lowest]["size"] = str(remaining)
-                        expense += eval(self.book[lowest]["price"])*target_size
+                        book[lowest]["size"] = str(remaining)
+                        expense += eval(book[lowest]["price"])*target_size
                         break
                 else:
                     break
-            return expense
-        else:
-            return False
+            if expense > 0:
+                stdout.write("{time} B {expense}\n".format(time=time, expense=expense))
+        return expense
 
     @staticmethod
     def is_int_or_float_greater_zero(obj):
@@ -233,8 +223,8 @@ class BoookAnalyzer(object):
         lowest = False
         id = None
         for order_id in book.keys():
+            price = eval(book[order_id]["price"])
             if lowest:
-                price = eval(book[order_id]["price"])
                 if lowest > price:
                     lowest = price
                     id = order_id
@@ -250,8 +240,8 @@ class BoookAnalyzer(object):
         id = None
         if book:
             for order_id in book.keys():
+                price = eval(book[order_id]["price"])
                 if highest:
-                    price = eval(book[order_id]["price"])
                     if highest < price:
                         highest = price
                         id = order_id
@@ -260,41 +250,16 @@ class BoookAnalyzer(object):
                     id = order_id
         return id
 
-    # @staticmethod
-    # def find_highest_bid(book):
-    #     """Find the highest ask in the Book."""
-    #     highest = {}
-    #     for order_id in book.keys():
-    #         if highest:
-    #             price = eval(book[order_id]["price"])
-    #             if highest[order_id] < price:
-    #                 highest = {order_id: price}
-    #         else:
-    #             highest = {order_id: price}
-    #     return highest
-
 
 def main():
     """Execute BookAnalyzer in CLI mode."""
     ba = BoookAnalyzer()
     ba.update_book()
-    # ba.check_input("55784570F A yithb S 44.49") # not ok 1
-    # ba.check_input("55784570 A yithb S 44.49 300") # ok
-    # ba.check_input("55784570 R yithb S 44.49 300") # not ok 2
-    # ba.check_input("55784570 A 1 S 44.49 300") # not ok 3
-    # ba.check_input("55784570 A yithb F 44.49 300") # not ok 4
-    # ba.check_input("55784570 R yithb S 44.49") # not ok 5
-    # ba.check_input("55784571 A sithb 100") # not ok 6
-    # ba.check_input("55784571 R sithb s") # not ok 7
-    # ba.check_input("55784571 R sithb 1 1") # not ok 8
-    # ba.check_input("55784571 R sithb 100") # ok
     print("Bids:")
     pprint(ba.bids)
     print("\n\n")
     print("Asks:")
     pprint(ba.asks)
-    # while True:
-    #     ba.fill_book()
 
 
 if __name__ == "__main__":
