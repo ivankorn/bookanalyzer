@@ -142,19 +142,21 @@ class BoookAnalyzer():
                     target = target_method(book)
                     if requested_size >= eval(book[target]["size"]):
                         requested_size -= eval(book[target]["size"])
-                        money += eval(book[target]["price"]) * \
-                            eval(book[target]["size"])
+                        money += round(eval(book[target]["price"]) *
+                                       eval(book[target]["size"]), 2)
                         del book[target]
                     else:
                         remaining = eval(book[target]["size"]) - requested_size
                         book[target]["size"] = str(remaining)
-                        money += eval(book[target]["price"])*requested_size
+                        money += round(eval(book[target]["price"]) *
+                                       requested_size, 2)
                         break
                 else:
                     break
             if money > 0:
                 output = "{side} {money}".format(side=side,
-                                                 money=format(money, '.2f'))
+                                                 money=format(round(money, 2),
+                                                              '.2f'))
                 if state != output:
                     stdout.write("{time} {output}\n".format(time=time,
                                                             output=output))
