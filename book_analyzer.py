@@ -13,7 +13,9 @@ class BoookAnalyzer():
         """Set attributes."""
         super().__init__()
         self.bids = {}
+        self.bids_state = None
         self.asks = {}
+        self.asks_state = None
         self.income = False
         self.expense = False
         self.target_size = self.get_target_size()
@@ -37,46 +39,52 @@ class BoookAnalyzer():
                 (action, order_id, record) = self.parse_input(line)
                 if action == ("A", "B"):
                     self.bids[order_id] = record
-                    self.income = self.process_record(
+                    self.income, self.bids_state = self.process_record(
                         target_method=self.find_highest_bid,
                         validation_method=self.is_book_size_ok,
                         book=self.bids,
                         requested_size=self.target_size,
                         time=record["time"],
-                        side="S")
+                        side="S",
+                        state=self.bids_state)
                 if action == ("A", "S"):
                     self.asks[order_id] = record
-                    self.expense = self.process_record(
+                    self.expense, self.asks_state = self.process_record(
                         target_method=self.find_lowest_ask,
                         validation_method=self.is_book_size_ok,
                         book=self.asks,
                         requested_size=self.target_size,
                         time=record["time"],
-                        side="B")
+                        side="B",
+                        state=self.asks_state)
                 elif action == "R":
                     book = self.reduce_record(record["size"], order_id)
                     if book == "bids" and self.income and self.income != "NA":
-                        income = self.process_record(
+                        income, self.bids_state = self.process_record(
                             target_method=self.find_highest_bid,
                             validation_method=self.is_book_size_ok,
                             book=self.bids,
                             requested_size=self.target_size,
                             time=record["time"],
-                            side="S")
+                            side="S",
+                            state=self.bids_state)
                         if not income:
                             self.income = "NA"
+                            self.bids_state = "NA"
                             stdout.write("%s S NA\n" % record["time"])
                     if book == "asks" and \
                             self.expense and self.expense != "NA":
-                        expense = self.process_record(
+                        expense, self.asks_state = self.process_record(
                             target_method=self.find_lowest_ask,
                             validation_method=self.is_book_size_ok,
                             book=self.asks,
                             requested_size=self.target_size,
                             time=record["time"],
-                            side="B")
+                            side="B",
+                            state=self.asks_state)
                         if not expense:
                             self.expense = "NA"
+                            self.asks_state = "NA"
                             stdout.write("%s B NA\n" % record["time"])
             except TypeError:
                 pass
@@ -122,7 +130,7 @@ class BoookAnalyzer():
 
     @staticmethod
     def process_record(target_method, validation_method,
-                       book, requested_size, time, side):
+                       book, requested_size, time, side, state):
         """Process record according to requested logic."""
         book = deepcopy(book)
         requested_size = copy(requested_size)
@@ -145,11 +153,15 @@ class BoookAnalyzer():
                 else:
                     break
             if money > 0:
-                stdout.write("{time} {side} {money}\n".format(
-                    time=time, side=side, money=format(money, '.2f')))
-        return money
+                output = "{side} {money}".format(side=side,
+                                                 money=format(money, '.2f'))
+                if state != output:
+                    stdout.write("{time} {output}\n".format(time=time,
+                                                            output=output))
+                    state = output
+        return money, state
 
-    @staticmethod
+    @ staticmethod
     def is_int_or_float_greater_zero(obj):
         """
         Check if a value of evaluated object is Valid.
@@ -248,7 +260,7 @@ class BoookAnalyzer():
             stderr.write("INPUT ERROR: Input format is invalid.\n")
             return False
 
-    @staticmethod
+    @ staticmethod
     def find_lowest_ask(book):
         """Find the lowest bid in the Book."""
         lowest = False
@@ -264,7 +276,7 @@ class BoookAnalyzer():
                 lowest_id = order_id
         return lowest_id
 
-    @staticmethod
+    @ staticmethod
     def find_highest_bid(book):
         """Find the highest bid in the Book."""
         highest = False
